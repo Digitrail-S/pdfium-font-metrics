@@ -1,11 +1,11 @@
-"""统计一份 PDF 里有多少字符**必须**读文本矩阵才能拿到正确字号。
+"""Count how many characters in a PDF need the text matrix for a correct font size.
 
-    python bench.py                          # 自带样本
-    python bench.py a.pdf b.pdf              # 多个文件
-    python bench.py ~/Documents/pdfs         # 目录（递归找 *.pdf）
-    python bench.py big.pdf --pages 20       # 只看前 20 页
+    python bench.py                          # bundled sample
+    python bench.py a.pdf b.pdf              # several files
+    python bench.py ~/Documents/pdfs         # a directory (recursive *.pdf)
+    python bench.py big.pdf --pages 20       # first 20 pages only
 
-这是 README 里那组数字的来源脚本，可自行复跑核对。
+This is the script behind the numbers in the README; rerun it to check them.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pypdfium2 as pdfium  # noqa: E402
 from pdfium_font import PageText  # noqa: E402
 
-TOL = 0.01  # 判定「矩阵确实改变了字号」的容差
+TOL = 0.01  # tolerance for "the matrix actually changed the size"
 
 
 def collect(targets: list[str]) -> list[Path]:

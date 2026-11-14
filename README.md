@@ -1,118 +1,125 @@
 # pdfium-font-metrics
 
+**English** | [中文](README.zh-CN.md)
+
 > Character-level font dimensions that `pypdfium2` does not expose: real font size, weight,
 > italic flag, fill colour — and the text matrix that decides what "real size" means.
 
-一个单文件模块，把 pdfium 里一直存在、但 `pypdfium2` 高层 API 没封装的五个函数接出来。
-核心是那个**文本矩阵**：
+A single-file module that surfaces five pdfium functions which have always existed but are not
+wrapped by `pypdfium2`'s high-level `PdfTextPage`. The important one is the **text matrix**:
 
 ```python
-# 这两行在 PDF 里是等价的，都画 12pt 的字
-/F1 12 Tf  1 0 0 1 60 760 Tm  (hello) Tj     # 直接写字号
-/F1  1 Tf 12 0 0 12 60 760 Tm (hello) Tj     # 写 1.0，缩放交给矩阵
+# These two lines are equivalent: both draw 12pt text.
+/F1 12 Tf  1 0 0 1 60 760 Tm  (hello) Tj     # size written directly
+/F1  1 Tf 12 0 0 12 60 760 Tm (hello) Tj     # size 1.0, scaling lives in the matrix
 
-# 但 FPDFText_GetFontSize 对第二种只返回 1.0
+# FPDFText_GetFontSize returns 1.0 for the second form.
 ```
 
-大量真实文档用的是第二种。只读字号、不读矩阵，拿到的就是 `1.0`。
+A large share of real-world documents use the second form. Read the size but not the matrix and
+every character comes back as `1.0`.
 
 ---
 
-## 1. 问题有多普遍
+## 1. How common is this
 
-`bench.py` 在 6 份真实 PDF 上的统计（每份取前 6 页）：
+`bench.py` over six real PDFs, first 6 pages of each:
 
-| 文件 | 页 | 字符 | `fs=1.0` | 矩阵改字号 | 非黑 | 字体数 |
-|---|---|---:|---:|---:|---:|---:|
-| `irs-f1040.pdf`（美国税表，Acrobat 表单） | 2 | 7 927 | **100.0%** | 100.0% | 0.2% | 9 |
-| `eu-gdpr-de.pdf`（EU 官方排版，88 页） | 6 | 28 211 | **100.0%** | 100.0% | 0.0% | 3 |
-| `rfc9110-http-semantics.pdf`（IETF） | 6 | 5 447 | **100.0%** | 100.0% | 93.8% | 4 |
-| `arxiv-attention-1706.03762.pdf`（LaTeX） | 6 | 15 340 | 0.0% | 13.9% | 1.2% | 20 |
-| `cn-xiaokang-zh.pdf` | 6 | 4 793 | 0.0% | 0.0% | 100.0% | 1 |
-| `us-patent-3987654.pdf`（扫描件，无文字层） | 6 | 0 | — | — | — | 0 |
-| **合计** | | **61 718** | **67.4%** | 70.8% | 16.4% | |
+| File | Pages | Chars | `fs=1.0` | Matrix-scaled | Non-black | Fonts |
+|---|---:|---:|---:|---:|---:|---:|
+| `irs-f1040.pdf` (US tax form, Acrobat) | 2 | 7,927 | **100.0%** | 100.0% | 0.2% | 9 |
+| `eu-gdpr-de.pdf` (EU official typesetting, 88 pp) | 6 | 28,211 | **100.0%** | 100.0% | 0.0% | 3 |
+| `rfc9110-http-semantics.pdf` (IETF) | 6 | 5,447 | **100.0%** | 100.0% | 93.8% | 4 |
+| `arxiv-attention-1706.03762.pdf` (LaTeX) | 6 | 15,340 | 0.0% | 13.9% | 1.2% | 20 |
+| `cn-xiaokang-zh.pdf` | 6 | 4,793 | 0.0% | 0.0% | 100.0% | 1 |
+| `us-patent-3987654.pdf` (scan, no text layer) | 6 | 0 | — | — | — | 0 |
+| **Total** | | **61,718** | **67.4%** | 70.8% | 16.4% | |
 
-**4 份有文字层的文档里，3 份是 100%**。LaTeX 那篇最规矩（直接写实际字号），
-但仍有 13.9% 的字符字号被矩阵改变过。
+**Three of the four documents that have a text layer are at 100%.** The LaTeX paper is the
+well-behaved one — it writes the actual size directly — and still 13.9% of its characters have
+their size altered by the matrix.
 
-## 2. 为什么现成工具拿不到
+## 2. Why existing tools miss it
 
-拿 `pdftext`（[datalab-to/pdftext](https://github.com/datalab-to/pdftext)，Apache-2.0，
-Apache 生态里最常用的 pypdfium2 封装）举例。它的字符提取只调这三个：
+Take `pdftext` ([datalab-to/pdftext](https://github.com/datalab-to/pdftext), Apache-2.0, the most
+widely used pypdfium2 wrapper in the Apache ecosystem). Its character extraction calls exactly
+these:
 
 ```python
 # pdftext/pdf/chars.py
 get_unicode     = pdfium_c.FPDFText_GetUnicode
 get_char_angle  = pdfium_c.FPDFText_GetCharAngle
-get_fontsize    = pdfium_c.FPDFText_GetFontSize      # ← 原值，没乘矩阵
+get_fontsize    = pdfium_c.FPDFText_GetFontSize      # <- raw value, no matrix
 get_fontweight  = pdfium_c.FPDFText_GetFontWeight
 ```
 
-整个包里**没有 `FPDFText_GetMatrix`，也没有 `FPDFText_GetFillColor`**（`grep -r` 可验）。
-所以它对上面那三份文档给出的字号是：
+The package contains **no `FPDFText_GetMatrix` and no `FPDFText_GetFillColor`** (verify with
+`grep -r`). So for the three documents above it reports:
 
 ```
-pdftext 眼中的 irs-f1040.pdf p0（1109 个 span）
-   size=1.000  weight=-1   name=（空）                     ×542
-   size=1.000  weight=400  name=HelveticaNeueLTStd-Roman   ×459
-   size=1.000  weight=700  name=HelveticaNeueLTStd-Bd      ×96
+pdftext on irs-f1040.pdf p0 (1,109 spans)
+   size=1.000  weight=-1   name=(empty)                     x542
+   size=1.000  weight=400  name=HelveticaNeueLTStd-Roman    x459
+   size=1.000  weight=700  name=HelveticaNeueLTStd-Bd       x96
 
-pdftext 眼中的 eu-gdpr-de.pdf p0 → 全部 size=1.000
-pdftext 眼中的 rfc9110.pdf     p0 → 全部 size=1.000
+pdftext on eu-gdpr-de.pdf p0  -> every span size=1.000
+pdftext on rfc9110.pdf    p0  -> every span size=1.000
 ```
 
-`weight` 那一列也值得看一眼：`440` / `804` / `425` / `-1`。那是 PDF 字体描述符里的
-stemV 系粗值，**不是 CSS 字重**。本模块会按字体名归一化到 `400` / `700`。
+The `weight` column is worth a look too: `440` / `804` / `425` / `-1`. Those are stemV-style
+values from the font descriptor, **not CSS weights**. This module normalises them to `400` / `700`
+using the font name first.
 
-> 这不是说 pdftext 不好。它的目标是把 PDF 变成 blocks/lines/spans 的文本结构，
-> 字号只是顺带输出。做纯文本提取它够用；做**版式重建**（把字按原大小画回去）就不够。
+> This is not a knock on pdftext. Its goal is turning a PDF into blocks/lines/spans; font size is
+> a by-product. For plain text extraction it is enough. For **layout reconstruction** — drawing
+> the text back at its original size — it is not.
 
-## 3. 用法
+## 3. Usage
 
 ```python
 from pdfium_font import PageText
 
 with PageText("doc.pdf", page_index=0) as pt:
     for ch in pt.chars():
-        # ch.size 已经是设备空间字号
+        # ch.size is already in device space
         print(ch.text, ch.size, ch.font, ch.weight, ch.italic, ch.color)
 
-    # 按 run 聚合：同字体 / 同字号 / 同字重 / 同色
+    # aggregate into runs: same font / size / weight / colour
     for r in pt.runs():
         print(r["size"], r["raw_size"], r["scale"], r["font"], r["text"])
 ```
 
-`CharFont` 字段：
+`CharFont` fields:
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `size` | **设备空间字号**（pt），`raw_size * scale`。你要用的就是这个 |
-| `raw_size` | `FPDFText_GetFontSize` 原值，诊断用 |
-| `scale` | 从矩阵推出的缩放因子 |
-| `matrix` | 字符有效变换矩阵 `(a, b, c, d, e, f)` |
-| `size_h` / `size_v` | 水平 / 垂直等效字号。非等比缩放时两者不等，分别影响字宽与行高 |
-| `font` | 字体名，已剥掉 `ABCDEF+` 六位子集前缀 |
-| `weight` | 归一化到 100–900 的字重 |
-| `italic` | flags 里的 Italic 位，或字体名含 italic/oblique |
-| `color` | 填充色 `(r, g, b, a)` |
-| `bbox` | 紧贴字形的字符框 |
-| `loose` | 按 advance 算的字符框，更接近排版占位 |
-| `origin` | 字符原点（基线起点），行聚类用 |
+| `size` | **Device-space font size** (pt), `raw_size * scale`. This is the one you want |
+| `raw_size` | Raw `FPDFText_GetFontSize`, for diagnostics |
+| `scale` | Scale factor derived from the matrix |
+| `matrix` | Effective text matrix `(a, b, c, d, e, f)` |
+| `size_h` / `size_v` | Horizontal / vertical equivalent size. Differ under non-uniform scaling, and govern glyph width vs. line height respectively |
+| `font` | Font name, with the six-letter `ABCDEF+` subset prefix stripped |
+| `weight` | Weight normalised to 100–900 |
+| `italic` | Italic flag from the descriptor, or italic/oblique in the font name |
+| `color` | Fill colour `(r, g, b, a)` |
+| `bbox` | Character box hugging the glyph |
+| `loose` | Character box from advance width, closer to the layout slot |
+| `origin` | Character origin (baseline start), used for line clustering |
 
-不需要 `pikepdf`、不需要 `pymupdf`、不需要重编译 pdfium。唯一依赖是 `pypdfium2`。
+No `pikepdf`, no `pymupdf`, no recompiling pdfium. The only dependency is `pypdfium2`.
 
-## 4. 怎么验
+## 4. Verifying it
 
 ```bash
 pip install pypdfium2
 
-python make_sample.py      # 生成 examples/one-pt-tf.pdf（零依赖手写字节）
-python demo.py             # 看 1.0 Tf 被还原成 12pt 的过程
-python bench.py your.pdf   # 统计你的 PDF 里有多少字符依赖矩阵
+python make_sample.py      # writes examples/one-pt-tf.pdf (hand-built bytes, zero deps)
+python demo.py             # watch 1.0 Tf turn back into 12pt
+python bench.py your.pdf   # how many characters in your PDF depend on the matrix
 ```
 
-`make_sample.py` 生成的样本里六行分别是：矩阵缩放 / 直接字号 / 矩阵+颜色 /
-粗体 / 斜体 / 衬线，用来确认六个维度都读对了：
+The sample generated by `make_sample.py` covers six rows — matrix-scaled / direct size /
+matrix + colour / bold / italic / serif — so you can confirm all six dimensions come back right:
 
 ```
 one character, in full:
@@ -123,55 +130,60 @@ one character, in full:
   size      = raw_size * scale = 12.000   <- the real font size
 ```
 
-## 5. 和 PyMuPDF 对不齐的那 0.1% 不是 bug
+## 5. The 0.1% that disagrees with PyMuPDF is not a bug
 
-用 PyMuPDF 的 `span["size"]` 当基准（容差 0.02pt）跑整页：
+Using PyMuPDF's `span["size"]` as the baseline (0.02pt tolerance) across whole pages:
 
-| 文件 | 字符 | 一致率 |
+| File | Chars | Agreement |
 |---|---:|---:|
-| `rfc9110` | 5 447 | 100.00% |
-| `arxiv-attention` | 15 340 | 100.00% |
-| `eu-gdpr-de` | 28 211 | 99.91% |
-| `irs-f1040` | 7 927 | 99.65% |
+| `rfc9110` | 5,447 | 100.00% |
+| `arxiv-attention` | 15,340 | 100.00% |
+| `eu-gdpr-de` | 28,211 | 99.91% |
+| `irs-f1040` | 7,927 | 99.65% |
 
-两个偏差样本，逐个查过：
+Two disagreement samples, both traced:
 
-| 字符 | 本模块 | PyMuPDF | PDF 里的矩阵 | bbox 高 ÷ 字号 |
+| Char | This module | PyMuPDF | Matrix in the PDF | bbox height / size |
 |---|---:|---:|---|---|
 | IRS p0 `U` | 12.00 | 20.00 | `a = d = 12.0`, `raw = 1.0` | 8.3 / 12 = **0.69** ✔ |
 | GDPR p0 `D` | 8.53 | 9.60 | `a = d = 8.529`, `raw = 1.0` | 5.70 / 8.53 = **0.67** ✔ |
 
-矩阵里明写着 `1.0 Tf` + `a = d = 12.0`，设备空间字号就是 12——这是定义，不是估计。
-bbox 高度除以字号得 0.69 / 0.67，正好是大写字母的标准 cap height 比例；
-按 PyMuPDF 给的 20 和 9.6 去算会掉到 0.41 和 0.59，反而对不上。
+The matrix literally says `1.0 Tf` with `a = d = 12.0`, so the device-space size is 12 — that is
+the definition, not an estimate. And bbox height divided by size gives 0.69 / 0.67, exactly the
+standard cap-height ratio for uppercase; running the same division with PyMuPDF's 20 and 9.6 gives
+0.41 and 0.59, which does not match.
 
-原因：**PyMuPDF 的 `span["size"]` 是 span 级聚合值，本模块是字符级**。
-GDPR 那个 span 有 85 个字符，9.6 恰好是整份文档的正文号——它把一个 span 里混排的
-字号统一了。
+The cause: **PyMuPDF's `span["size"]` is a span-level aggregate; this module is character-level.**
+That GDPR span holds 85 characters, and 9.6 happens to be the body-text size of the whole document
+— it unified the sizes of mixed-size characters inside one span.
 
-## 6. 这是什么，不是什么
+## 6. What this is, and what it is not
 
-- **是**：一个字符级字体属性提取器。给你 `字符 + 坐标 + 字号 + 字重 + 斜体 + 颜色`。
-- **不是**文本提取库。它不产出行/段/栏，不做阅读顺序，不做表格。那是 `pdftext`、
-  `pymupdf`、`pdfplumber` 的活。
-- **不是** PDF 重排/重建引擎。它只负责把"这段字原本多大、多粗、什么颜色"说准，
-  怎么画回去是你的事。
+- **It is** a character-level font attribute extractor. You get `character + position + size +
+  weight + italic + colour`.
+- **It is not** a text extraction library. It produces no lines, blocks or columns, does no
+  reading-order analysis, no tables. That is `pdftext`, `pymupdf`, `pdfplumber` territory.
+- **It is not** a PDF re-layout / rebuild engine. It only makes sure "how big, how bold, what
+  colour was this text originally" is answered correctly. Drawing it back is your job.
 
-已知边界：
+Known limits:
 
-- 纯旋转矩阵（`a = d = 0`）走 `sqrt(|det|)` 分支。这条逻辑是数学上必需的，
-  但在 1 197 页语料里没有命中过旋转字符，**未经过真实语料验证**。
-- `Ts`（Text Rise，上下标位移）取不到：pdfium 不暴露，`FPDFText_GetCharOrigin`
-  已经把它折进 origin 了。
-- 只处理文字层。扫描件没有文字层，`count()` 直接是 0。
+- Pure rotation matrices (`a = d = 0`) take the `sqrt(|det|)` branch. That branch is
+  mathematically necessary, but across 1,197 pages of corpus no rotated character was ever hit,
+  so it is **untested against real content**.
+- `Ts` (Text Rise, the superscript/subscript shift) is not obtainable: pdfium does not expose it,
+  and `FPDFText_GetCharOrigin` has already folded it into the origin.
+- Text layer only. A scanned page has no text layer and `count()` is simply 0.
 
-## 7. 许可
+## 7. Licence
 
-MIT。`pypdfium2` 是 Apache-2.0 / BSD-3-Clause，pdfium 本体是 BSD-3-Clause。
+MIT. `pypdfium2` is Apache-2.0 / BSD-3-Clause; pdfium itself is BSD-3-Clause.
 
-## 8. 联系
+## 8. Contact
 
-纠错、提问、想讨论 PDF 重建里别的坑：`contact@digitrail.net`，或直接开 Issue。
+Corrections, questions, or other PDF-reconstruction traps worth discussing:
+`contact@digitrail.net`, or just open an issue.
 
-这个库是从 [Digitrail](https://digitrail.net)（PDF 版式重建工具）里剥出来的一小块。
-它只承担一件事——把 pdfium 没封装清楚的字体维度说清楚——不承载任何产品逻辑，所以单独开源。
+This library is a small piece carved out of [Digitrail](https://digitrail.net) (a PDF layout
+reconstruction tool). It does exactly one thing — state clearly the font dimensions pdfium leaves
+unwrapped — and carries no product logic, which is why it is open-sourced on its own.

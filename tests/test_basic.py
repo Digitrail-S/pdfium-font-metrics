@@ -1,4 +1,4 @@
-"""端到端测试：用 make_sample.py 生成的样本反查每个维度。"""
+"""End-to-end tests: check every dimension against the sample from make_sample.py."""
 from __future__ import annotations
 
 import sys
@@ -32,7 +32,7 @@ def test_sample_opens(sample):
 
 
 def test_matrix_scaled_size(runs):
-    """1.0 Tf + 12x 矩阵 -> 12pt。raw_size 仍是 1.0。"""
+    """1.0 Tf + 12x matrix -> 12pt, while raw_size stays 1.0."""
     r = runs[0]
     assert r["raw_size"] == pytest.approx(1.0)
     assert r["scale"] == pytest.approx(12.0)
@@ -41,7 +41,7 @@ def test_matrix_scaled_size(runs):
 
 
 def test_direct_size_needs_no_matrix(runs):
-    """9 Tf + 单位矩阵 -> 9pt，scale 必须是 1。"""
+    """9 Tf + identity matrix -> 9pt, so scale must be 1."""
     r = runs[1]
     assert r["raw_size"] == pytest.approx(9.0)
     assert r["scale"] == pytest.approx(1.0)
@@ -49,12 +49,12 @@ def test_direct_size_needs_no_matrix(runs):
 
 
 def test_fill_color(runs):
-    """第三行是蓝色。"""
+    """The third row is blue."""
     assert tuple(runs[2]["color"]) == (0, 0, 255, 255)
 
 
 def test_weight_from_font_name(runs):
-    """Helvetica-Bold 的 pdfium weight 不可信，得靠字体名归一化成 700。"""
+    """pdfium's weight for Helvetica-Bold is unreliable; the name must win, giving 700."""
     bold = next(r for r in runs if r["font"] == "Helvetica-Bold")
     assert bold["weight"] == 700
     regular = next(r for r in runs if r["font"] == "Helvetica")
@@ -67,7 +67,7 @@ def test_italic_flag(runs):
 
 
 def test_matrix_exposed(sample):
-    """matrix 必须原样暴露 a/b/c/d/e/f。"""
+    """The matrix must expose a/b/c/d/e/f verbatim."""
     with PageText(sample, 0) as pt:
         ch = next(c for c in pt.chars(skip_blank=True) if c.text == "A")
     a, b, c, d, e, f = ch.matrix
@@ -77,7 +77,7 @@ def test_matrix_exposed(sample):
 
 
 def test_size_h_size_v_agree_when_uniform(sample):
-    """等比缩放时水平/垂直等效字号应相等。"""
+    """Under uniform scaling the horizontal and vertical sizes must match."""
     with PageText(sample, 0) as pt:
         ch = next(c for c in pt.chars(skip_blank=True) if c.text == "A")
     assert ch.size_h == pytest.approx(ch.size_v)
@@ -86,12 +86,12 @@ def test_size_h_size_v_agree_when_uniform(sample):
 def test_subset_prefix_stripped():
     assert _strip_subset("YMVEVT+Arial") == "Arial"
     assert _strip_subset("Helvetica") == "Helvetica"
-    # 只有 6 个大写字母 + 加号才算子集前缀
+    # Only six uppercase letters followed by '+' count as a subset prefix.
     assert _strip_subset("ABC+Def") == "ABC+Def"
 
 
 def test_scan_pdf_has_no_chars(tmp_path):
-    """零字节层的 PDF：count() 为 0，不应抛异常。"""
+    """A PDF with an empty text layer: count() is 0 and nothing raises."""
     p = tmp_path / "blank.pdf"
     p.write_bytes(build_pdf(""))
     with PageText(str(p), 0) as pt:

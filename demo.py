@@ -1,8 +1,8 @@
-"""看一眼 `1.0 Tf` 到底长什么样。
+"""See what `1.0 Tf` actually looks like.
 
-    python demo.py                     # 用自带的 examples/one-pt-tf.pdf
-    python demo.py your.pdf            # 用你自己的 PDF
-    python demo.py your.pdf 3          # 指定页
+    python demo.py                     # uses the bundled examples/one-pt-tf.pdf
+    python demo.py your.pdf            # your own PDF
+    python demo.py your.pdf 3          # specific page
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def ensure_sample(path: str) -> None:
     p = Path(path)
     if p.exists():
         return
-    # 样本是纯手写字节生成的，不需要任何依赖
+    # The sample is generated from hand-built bytes, so it needs no dependencies.
     sys.path.insert(0, str(Path(__file__).parent))
     from make_sample import build_pdf
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,7 @@ def main(argv: list[str]) -> int:
         print(f"file : {path}")
         print(f"page : {page}   chars: {pt.count()}\n")
 
-        # ---- 一个字符的解剖 ----
+        # ---- dissect one character ----
         for ch in pt.chars(skip_blank=True):
             if abs(ch.size - ch.raw_size) > 0.01:
                 a, b, c, d, e, f = ch.matrix
@@ -50,7 +50,7 @@ def main(argv: list[str]) -> int:
                 print()
                 break
 
-        # ---- 全页 run 表 ----
+        # ---- per-page run table ----
         head = (f"{'#':>2}  {'raw':>6} {'size':>7} {'scale':>7} {'w':>4} {'it':>2}  "
                 f"{'font':<16} {'color':<16} text")
         print(head)
@@ -65,7 +65,7 @@ def main(argv: list[str]) -> int:
             print(f"{i:2d}  {r['raw_size']:6.2f} {r['size']:7.2f} {r['scale']:7.3f} "
                   f"{r['weight']:4d} {int(r['italic']):2d}  {r['font']:<16} {rgb:<16} {text}")
 
-        # ---- 结论 ----
+        # ---- summary ----
         chars = list(pt.chars(skip_blank=True))
         total = len(chars)
         ones = sum(1 for ch in chars if abs(ch.raw_size - 1.0) < 1e-6)

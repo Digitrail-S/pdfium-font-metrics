@@ -1,20 +1,24 @@
-"""pdfium_font —— pypdfium2 缺失的字符级字体维度。
+"""pdfium_font - the character-level font dimensions that pypdfium2 does not expose.
 
-pdfium 的 C API 一直都有这些函数，但 pypdfium2 的 ``PdfTextPage`` 高层类没有封装：
+pdfium's C API has always provided these functions, but pypdfium2's high-level
+``PdfTextPage`` does not wrap them:
 
-    FPDFText_GetFontSize     文字空间字号（PDF 里常用 1.0，真实大小靠矩阵缩放）
-    FPDFText_GetMatrix       字符的有效变换矩阵
-    FPDFText_GetFontInfo     字体名（可能带 6 位子集前缀，如 ``YMVEVT+``）+ 描述符 flags
-    FPDFText_GetFontWeight   原始 weight 值（不是 CSS 字重，见 ``_normalize_weight``）
-    FPDFText_GetFillColor    文字填充色 RGBA
-    FPDFText_GetLooseCharBox ``advance`` 宽度意义上的字符框
-    FPDFText_GetCharOrigin   字符原点（基线起点）
+    FPDFText_GetFontSize      size in text space (real PDFs often store 1.0; the
+                              actual size comes from matrix scaling)
+    FPDFText_GetMatrix        effective transform matrix of the character
+    FPDFText_GetFontInfo      font name (may carry a six-letter subset prefix such
+                              as ``YMVEVT+``) plus descriptor flags
+    FPDFText_GetFontWeight    raw weight value (not a CSS weight, see
+                              ``_normalize_weight``)
+    FPDFText_GetFillColor     RGBA fill colour
+    FPDFText_GetLooseCharBox  character box by advance width
+    FPDFText_GetCharOrigin    character origin (baseline start)
 
-其中 **`FPDFText_GetMatrix` 是最关键的一个**。`FPDFText_GetFontSize` 返回的是文本空间
-字号，而 PDF 里大量文档写的是 ``1.0 Tf`` 再去 ``Tm`` 上做缩放 —— 不乘矩阵,拿到的就是
-``1.0``，不是真实字号。
+``FPDFText_GetMatrix`` is the one that matters. ``FPDFText_GetFontSize`` returns the size in
+text space, and a large share of real documents write ``1.0 Tf`` and put the scaling on
+``Tm`` - read the size without the matrix and you get ``1.0``, not the real size.
 
-用法::
+Usage::
 
     from pdfium_font import PageText
 
@@ -22,7 +26,7 @@ pdfium 的 C API 一直都有这些函数，但 pypdfium2 的 ``PdfTextPage`` �
         for ch in pt.chars():
             print(ch.text, ch.size, ch.font, ch.weight, ch.color)
 
-    # 或按 run 聚合（同字体 / 同字号 / 同字重 / 同色）
+    # or aggregate into runs (same font / size / weight / colour)
     for run in pt.runs():
         print(run["size"], run["font"], run["text"])
 """
@@ -38,7 +42,7 @@ import pypdfium2.raw as C
 
 __all__ = ["CharFont", "PageText"]
 
-# PDF 规范里的字体描述符 flags 位（PDF 32000-1 §9.8.1）
+# Font descriptor flag bits from the PDF specification (PDF 32000-1, 9.8.1).
 FLAG_FIXED_PITCH = 1 << 0
 FLAG_SERIF = 1 << 1
 FLAG_SYMBOLIC = 1 << 2
@@ -49,29 +53,31 @@ FLAG_ALLCAP = 1 << 16
 FLAG_SMALLCAP = 1 << 17
 FLAG_FORCE_BOLD = 1 << 18
 
-# 子集前缀：6 个 ASCII 大写 + '+'（"ABCDEF+FontName"）
+# Subset prefix: six uppercase ASCII letters followed by '+', e.g. "ABCDEF+FontName".
 _SUBSET_RE = re.compile(r"^[A-Z]{6}\+")
 
 
 @dataclass(frozen=True)
 class CharFont:
-    """一个字符，连同它的字体维度。
+    """One character together with its font dimensions.
 
     Attributes:
-        text: 字符本身。
-        bbox: 紧贴字形的字符框 ``(x0, y0, x1, y1)``，PDF 用户空间。
-        size: 设备空间有效字号（pt），已乘矩阵缩放。**这是你要用的那个**。
-        size_h: 水平方向等效字号，影响字宽与溢出判断。
-        size_v: 垂直方向等效字号，影响行高。
-        font: 字体名，已剥掉 6 位子集前缀。
-        weight: 归一化到 100~900 的字重（见 ``_normalize_weight``）。
-        italic: 是否斜体。
-        color: 填充色 ``(r, g, b, a)``。
-        raw_size: ``FPDFText_GetFontSize`` 原值，诊断用。
-        scale: 从矩阵推出的缩放因子，``size == raw_size * scale``。
-        matrix: 字符有效变换矩阵 ``(a, b, c, d, e, f)``。
-        loose: 按 ``advance`` 计算的字符框，比 ``bbox`` 更接近排版占位。
-        origin: 字符原点（基线起点），行聚类靠它。
+        text: The character itself.
+        bbox: Character box hugging the glyph, ``(x0, y0, x1, y1)`` in PDF user space.
+        size: Effective size in device space (pt), already scaled by the matrix.
+            This is the value to use.
+        size_h: Horizontal equivalent size; governs glyph width and overflow checks.
+        size_v: Vertical equivalent size; governs line height.
+        font: Font name with the six-letter subset prefix stripped.
+        weight: Weight normalised to 100-900 (see ``_normalize_weight``).
+        italic: Whether the glyph is italic or oblique.
+        color: Fill colour ``(r, g, b, a)``.
+        raw_size: Raw ``FPDFText_GetFontSize`` value, for diagnostics.
+        scale: Scale factor derived from the matrix; ``size == raw_size * scale``.
+        matrix: Effective text matrix ``(a, b, c, d, e, f)``.
+        loose: Character box computed from advance width, closer to the layout slot
+            than ``bbox``.
+        origin: Character origin (baseline start), used for line clustering.
     """
 
     text: str
@@ -107,11 +113,13 @@ def _weight_from_name(name: str) -> int:
 
 
 def _normalize_weight(font: str, pdfium_weight: int) -> int:
-    """把 pdfium 的原始 weight 归一化成 CSS 风格的 100~900。
+    """Map pdfium's raw weight onto a CSS-style 100-900 value.
 
-    ``FPDFText_GetFontWeight`` 返回的是字体描述符里的 stemV 系粗值，**不是 CSS 字重**。
-    同一族里 Roman / Bold 的差别可能只是 220 → 235，直接当 CSS 用会全被当成 400 以下。
-    所以优先看字体名，名字判不出来才用数值粗分档。
+    ``FPDFText_GetFontWeight`` returns the stemV-derived weight of the font
+    descriptor, which is **not** a CSS weight. Within one family, Roman and Bold may
+    differ only by 220 vs 235, so using the raw number directly puts everything below
+    400. The font name is therefore checked first; the numeric value is only a coarse
+    fallback.
     """
     by_name = _weight_from_name(font)
     if by_name:
@@ -129,11 +137,11 @@ def _normalize_weight(font: str, pdfium_weight: int) -> int:
 
 
 class PageText:
-    """一页的字符流 + 字体维度。用作上下文管理器。
+    """The character stream of one page, with font dimensions. Use as a context manager.
 
     Args:
-        source: 文件路径、bytes 或已打开的 ``PdfDocument``。
-        page_index: 页序号，从 0 开始。
+        source: A path, bytes, or an already-open ``PdfDocument``.
+        page_index: Zero-based page index.
     """
 
     def __init__(self, source, page_index: int = 0):
@@ -143,7 +151,7 @@ class PageText:
 
     @classmethod
     def from_page(cls, page) -> "PageText":
-        """复用一个已打开的 ``PdfPage``，避免反复开关文档。"""
+        """Reuse an already-open ``PdfPage`` instead of reopening the document."""
         self = cls.__new__(cls)
         self._doc = None
         self._page = page
@@ -158,7 +166,7 @@ class PageText:
         self._mat = C.FS_MATRIX()
         self._rgba = [ctypes.c_uint() for _ in range(4)]
 
-    # ---- 生命周期 ----
+    # ---- lifecycle ----
     def __enter__(self):
         return self
 
@@ -171,7 +179,7 @@ class PageText:
         if self._doc is not None:
             self._doc.close()
 
-    # ---- 单字符 ----
+    # ---- single character ----
     def count(self) -> int:
         return self._tp.count_chars()
 
@@ -200,12 +208,15 @@ class PageText:
         m = self._mat
         matrix = (m.a, m.b, m.c, m.d, m.e, m.f)
 
-        # a/d 分别是水平/垂直缩放。非等比缩放（部分 Office / WPS 导出常见）时两者不等，
-        # 取几何平均 sqrt(|a|·|d|)，与 PyMuPDF 的 span["size"] 口径一致。
+        # a and d are the horizontal and vertical scale. They differ under
+        # non-uniform scaling (common in some Office / WPS exports), so take the
+        # geometric mean sqrt(|a|*|d|), which matches PyMuPDF's span["size"].
         #
-        # ⚠️ 纯旋转矩阵是 [0 b; c 0]，a = d = 0 ⇒ 几何平均退化成 1.0，字号会变成
-        #    raw_size 本身。所以对角为 0 时改走 sqrt(|det|)。对角矩阵下
-        #    sqrt(|det|) ≡ sqrt(|a|·|d|)，因此这条只影响旋转/切变，横排文本不受影响。
+        # A pure rotation matrix is [0 b; c 0], i.e. a = d = 0, where the geometric
+        # mean degenerates to 1.0 and the size would collapse to raw_size. So fall
+        # back to sqrt(|det|) when the diagonal is zero. For diagonal matrices
+        # sqrt(|det|) == sqrt(|a|*|d|), so this only affects rotated or sheared text;
+        # horizontal text is untouched.
         ax, dy = abs(m.a), abs(m.d)
         det = m.a * m.d - m.b * m.c
         if ax and dy:
@@ -251,7 +262,7 @@ class PageText:
         )
 
     def chars(self, skip_blank: bool = False):
-        """逐字符产出 ``CharFont``。"""
+        """Yield ``CharFont`` per character."""
         for i in range(self.count()):
             c = self.char(i)
             if c is None:
@@ -260,11 +271,12 @@ class PageText:
                 continue
             yield c
 
-    # ---- 聚合 ----
+    # ---- aggregation ----
     def runs(self):
-        """相邻且字体属性完全相同的字符聚成一个 run。
+        """Group adjacent characters with identical font attributes into one run.
 
-        判定键是 ``(font, size, weight, italic, color)``，与排版层的 span 概念对应。
+        The grouping key is ``(font, size, weight, italic, color)``, matching the
+        span concept used by layout code.
         """
         cur = None
         for c in self.chars():
