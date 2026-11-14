@@ -1,0 +1,50 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<</Type/Catalog/Pages 2 0 R>>
+endobj
+2 0 obj
+<</Type/Pages/Kids[3 0 R]/Count 1>>
+endobj
+3 0 obj
+<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<</Font<</F1 4 0 R/F2 5 0 R/F3 6 0 R/F4 7 0 R>>>>/Contents 8 0 R>>
+endobj
+4 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>
+endobj
+5 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold/Encoding/WinAnsiEncoding>>
+endobj
+6 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Times-Roman/Encoding/WinAnsiEncoding>>
+endobj
+7 0 obj
+<</Type/Font/Subtype/Type1/BaseFont/Times-Italic/Encoding/WinAnsiEncoding>>
+endobj
+8 0 obj
+<</Length 512>>stream
+BT /F1 1 Tf 12 0 0 12 60 760 Tm 0 0 0 rg (A  1.0 Tf  + 12x matrix  -> 12.0pt black) Tj ET
+BT /F1 9 Tf 1 0 0 1 60 730 Tm (B  9 Tf    + identity      ->  9.0pt black) Tj ET
+BT /F1 1 Tf 9 0 0 9 60 700 Tm 0 0 1 rg (C  1.0 Tf  + 9x  matrix  ->  9.0pt blue)  Tj ET
+BT /F2 1 Tf 14 0 0 14 60 660 Tm 0 0 0 rg (D  1.0 Tf  + 14x matrix  -> 14.0pt bold)  Tj ET
+BT /F4 1 Tf 11 0 0 11 60 630 Tm (E  1.0 Tf  + 11x matrix  -> 11.0pt italic) Tj ET
+BT /F3 1 Tf 10 0 0 10 60 600 Tm (F  1.0 Tf  + 10x matrix  -> 10.0pt serif) Tj ET
+
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000060 00000 n 
+0000000111 00000 n 
+0000000250 00000 n 
+0000000338 00000 n 
+0000000431 00000 n 
+0000000521 00000 n 
+0000000612 00000 n 
+trailer
+<</Size 9/Root 1 0 R>>
+startxref
+1172
+%%EOF

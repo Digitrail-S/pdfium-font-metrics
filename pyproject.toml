@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdfium-font-metrics"
+version = "0.1.0"
+description = "Character-level font metrics for pypdfium2: real font size via the text matrix, weight, italic flag and fill colour."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Digitrail studio", email = "contact@digitrail.net" }]
+keywords = ["pdf", "pdfium", "pypdfium2", "font", "text-matrix", "typography"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = ["pypdfium2>=4.30"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["pdfium_font"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
